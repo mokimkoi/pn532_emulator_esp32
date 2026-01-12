@@ -148,12 +148,62 @@ void app_main()
         ESP_LOGI(TAG, "Displaying Tag 2 info:");
         show_tag_info(secondaryTag);
         }
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-    }while (mainTag->tg_number == 0 || secondaryTag->tg_number == 0);
+    }while (mainTag->tg_number == 0 );
+    // if (mainTag->tg_number >= 1 && mainTag != NULL && mainTag->uidLength > 0) {
+    //     ESP_LOGI(TAG, "Displaying Tag 1 info:");
+    //     show_tag_info(mainTag);
+    //     uint8_t **sector_data;
+    //     uint8_t key []={0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    //     sector_data = (uint8_t **)malloc(4 * sizeof(uint8_t *));
+    //     for (int i = 0; i < 4; i++) {
+    //         sector_data[i] = (uint8_t *)malloc(16 * sizeof(uint8_t));
+    //     }
+    //     uint8_t sector_number=0;
+    //     err = mfc_dump_sector_1K(&pn532_io, mainTag, sector_number,sector_data , MIFARE_CMD_AUTH_A, key);
+    //     if (ESP_OK != err) {
+    //         ESP_LOGI(TAG, "Failed to dump sector 5");
+    //         return;
+    //     }
+    //     ESP_LOGI(TAG, "Sector 5 data:");
+    //     ESP_LOGI(TAG, "after  Dumping sector 5 data:");
+    //     for (int i = 0; i < 4; i++) {
+    //         ESP_LOGI(TAG, " Block %d:", i + 24);
+    //         ESP_LOG_BUFFER_HEXDUMP(TAG, sector_data[i], 16, ESP_LOG_INFO);
+    //     }
+    // }
+    if (mainTag->tg_number >= 1 && mainTag != NULL && mainTag->uidLength > 0) {
+        
+
+        ESP_LOGI(TAG, "Displaying Tag 1 info:");
+        show_tag_info(mainTag);
+
+        uint8_t **sector_data;
+        uint8_t key []={0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+        
+        sector_data = (uint8_t **)malloc(4 * sizeof(uint8_t *));
+        for (int i = 0; i < 4; i++) {
+            sector_data[i] = (uint8_t *)malloc(16 * sizeof(uint8_t));
+        }
+        uint8_t sector_number=0;
+
+        
+        err = mfc_dump_sector_1K(&pn532_io, mainTag, sector_number,sector_data , MIFARE_CMD_AUTH_A, key);
+        if (ESP_OK != err) {
+            ESP_LOGI(TAG, "Failed to dump sector 5");
+            return;
+        }
+        ESP_LOGI(TAG, "Sector 5 data:");
+        ESP_LOGI(TAG, "after  Dumping sector 5 data:");
+        for (int i = 0; i < 4; i++) {
+            ESP_LOGI(TAG, " Block %d:", i + 24);
+            ESP_LOG_BUFFER_HEXDUMP(TAG, sector_data[i], 16, ESP_LOG_INFO);
+        }
+    }
+
+
     
-    
-    // Log firmware infos
     ESP_LOGI(TAG, "Found chip PN5%x", (unsigned int)(version_data >> 24) & 0xFF);
     ESP_LOGI(TAG, "Firmware ver. %d.%d", (int)(version_data >> 16) & 0xFF, (int)(version_data >> 8) & 0xFF);
 

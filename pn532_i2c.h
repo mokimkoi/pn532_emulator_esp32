@@ -394,12 +394,16 @@ esp_err_t mifare_type_decode(TagInfo *Tag) ;
  * @return ESP_OK if successful     
 */
 esp_err_t pn532_sendrecv_command(pn532_io_handle_t io_handle, uint8_t commandlen,uint8_t replylen,uint16_t timeout,char *function_name,uint8_t debug_flag);
-
+esp_err_t pn532_indataexchange(pn532_io_handle_t io_handle,const uint8_t *send_buffer,uint8_t send_buffer_length,uint8_t *response,uint8_t *response_length) ;
 
 esp_err_t show_tag_info(TagInfo *Tag) ;
 esp_err_t typeA_response_parse(TagInfo *tag_info1,TagInfo *tag_info2) ;   
 esp_err_t init_taginfo(TagInfo *Tag) ;
 
+esp_err_t mfc_authenticate_block(pn532_io_handle_t io_handle,TagInfo *tag_info,uint8_t block_number, uint8_t key_type, const uint8_t *inkey) ;
+esp_err_t mfc_read_block(pn532_io_handle_t io_handle, uint8_t tg_number, uint8_t block_number, uint8_t *data) ;
+esp_err_t mfc_write_block(pn532_io_handle_t io_handle, uint8_t tg_number, uint8_t block_number, const uint8_t *data) ;
+esp_err_t mfc_dump_sector_1K(pn532_io_handle_t io_handle, TagInfo *tag_info, uint8_t sector_number, uint8_t **dump_buffer,uint8_t key_type,uint8_t *inkey) ;
 #ifdef __cplusplus
 }
 #endif

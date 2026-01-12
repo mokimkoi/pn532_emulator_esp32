@@ -1,6 +1,6 @@
 /**
  * @file     pn532.h
- * @author   D. Braun
+ * @author   MOHCINE 
  * @license  MIT (see license.txt)
  * This is a PN532 Driver for the ESP32 family and IDF 5.3 for NXP's PN532 NFC/13.56MHz RFID Transceiver.
  * This component is inspired the Adafruit library.
@@ -17,13 +17,15 @@
 
 
 static const char TAG[] = "PN532";
+const uint8_t key_factroy[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
 static uint8_t *tgnumber = 0;
 
 const uint8_t pn532response_firmwarevers[] = {0x00, 0xFF, 0x06, 0xFA, 0xD5, 0x03};
 
 static uint8_t pn532_inListedTag;  // Tg number of inlisted tag.
 
-#define PN532_COMMAND_BUFFER_LEN 64
+#define PN532_COMMAND_BUFFER_LEN 256
 uint8_t pn532_packetbuffer[PN532_COMMAND_BUFFER_LEN];
 
 esp_err_t pn532_get_firmware_version(pn532_io_handle_t io_handle, uint32_t *fw_version)
@@ -278,7 +280,7 @@ esp_err_t pn532_inlistpassivetargetscan(pn532_io_handle_t io_handle,uint8_t Tgty
     }
     pn532_packetbuffer[2] = BrTy;
 
-    err=pn532_sendrecv_command(io_handle, 3, 32, 1000, (char *)FnName,1);
+    err=pn532_sendrecv_command(io_handle, 3, 32, 1000, (char *)FnName,0);
     if (ESP_OK != err) {
         ESP_LOGI(TAG, "pn532_inlistpassivetargetscan(): writing the parameter failed");
         return err;
@@ -300,6 +302,157 @@ esp_err_t pn532_inlistpassivetargetscan(pn532_io_handle_t io_handle,uint8_t Tgty
     //     ESP_LOGI(TAG, "Displaying Tag 2 info:");
     //     show_tag_info(tag_info2);
     // }
+    return ESP_OK;
+}
+esp_err_t pn532_indataexchange(pn532_io_handle_t io_handle,const uint8_t *send_buffer,uint8_t send_buffer_length,uint8_t *response,uint8_t *response_length) {
+    if (send_buffer_length > PN532_COMMAND_BUFFER_LEN - 2) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    memset(pn532_packetbuffer, 0, sizeof(pn532_packetbuffer));
+    pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
+    pn532_packetbuffer[1] = 0x01; // only one card
+    memcpy(&pn532_packetbuffer[2], send_buffer, send_buffer_length);
+    ESP_LOG_BUFFER_HEXDUMP(TAG, pn532_packetbuffer, send_buffer_length + 2, ESP_LOG_INFO);
+    esp_err_t err = pn532_sendrecv_command(io_handle, 2 + send_buffer_length, 64, 1000, "pn532_indataexchange", 1);
+    if (ESP_OK != err) {
+        ESP_LOGI(TAG, "pn532_indataexchange(): sending data failed");
+        return err;
+    }
+    if (pn532_packetbuffer[6] != 0x41 || pn532_packetbuffer[7] != 0x00 ) {
+        ESP_LOGI(TAG, "pn532_indataexchange(): command failed");
+        return ESP_FAIL;
+    }
+    *response_length = pn532_packetbuffer[3] - 3;//subtracting the 3 bytes of header
+    memcpy(response, &pn532_packetbuffer[8], *response_length);
+    return ESP_OK;
+}
+esp_err_t mfc_authenticate_block(pn532_io_handle_t io_handle,TagInfo *tag_info,uint8_t block_number, uint8_t key_type, const uint8_t *inkey) {
+    esp_err_t err;
+    uint8_t key [6];
+    if (io_handle == NULL || io_handle->driver_data == NULL || tag_info == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (inkey == NULL) {
+        memcpy(key, key_factroy, 6);
+    } else {
+        memcpy(key, inkey, 6);
+    }
+    pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
+    pn532_packetbuffer[1] = tag_info->tg_number;
+    if (key_type == MIFARE_CMD_AUTH_A) {
+        pn532_packetbuffer[2] = MIFARE_CMD_AUTH_A;
+    } else if (key_type == MIFARE_CMD_AUTH_B) {
+        pn532_packetbuffer[2] = MIFARE_CMD_AUTH_B;
+    } else {
+        ESP_LOGI(TAG, "mfc_authenticate_block(): invalid key type");
+        return ESP_ERR_INVALID_ARG;
+    }
+    pn532_packetbuffer[3] = block_number;
+    memcpy(&pn532_packetbuffer[4], key, 6);
+    memcpy(&pn532_packetbuffer[10], tag_info->uid, tag_info->uidLength);
+    err = pn532_sendrecv_command(io_handle, 10 + tag_info->uidLength, 8, 1000, "mfc_authenticate_block", 1);
+   
+    if (pn532_packetbuffer[6] != 0x41 || pn532_packetbuffer[7] != 0x00 || err != ESP_OK) {
+        ESP_LOGI(TAG, "mfc_authenticate_block(): authentication failed");
+        return ESP_FAIL;
+    }
+    return ESP_OK;
+
+}
+esp_err_t mfc_read_block(pn532_io_handle_t io_handle, uint8_t tg_number, uint8_t block_number, uint8_t *data) {
+    esp_err_t err;
+
+    if (io_handle == NULL || io_handle->driver_data == NULL || data == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
+    pn532_packetbuffer[1] = tg_number;
+    pn532_packetbuffer[2] = MIFARE_CMD_READ;
+    pn532_packetbuffer[3] = block_number;
+
+    err = pn532_sendrecv_command(io_handle, 4, 24, 1000, "mfc_read_block", 0);//4 bytes sent, expect 24 bytes in reply b0-b5 b6 
+    if (ESP_OK != err) {
+        ESP_LOGI(TAG, "mfc_read_block(): reading block failed");
+        return err;
+    }
+    if (pn532_packetbuffer[6] != 0x41 || pn532_packetbuffer[7] != 0x00 ) {
+        ESP_LOGI(TAG, "mfc_read_block(): reading block failed");
+        return ESP_FAIL;
+    }
+    memcpy(data, &pn532_packetbuffer[8], 16);
+    return ESP_OK;
+}
+esp_err_t mfc_write_block(pn532_io_handle_t io_handle, uint8_t tg_number, uint8_t block_number, const uint8_t *data) {
+    esp_err_t err;
+
+    if (io_handle == NULL || io_handle->driver_data == NULL || data == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
+    pn532_packetbuffer[1] = tg_number;
+    pn532_packetbuffer[2] = MIFARE_CMD_WRITE;
+    pn532_packetbuffer[3] = block_number;
+    memcpy(&pn532_packetbuffer[4], data, 16);
+
+    err = pn532_sendrecv_command(io_handle, 20, 8, 1000, "mfc_write_block", 1);//20 bytes sent, expect 8 bytes in reply
+    if (ESP_OK != err) {
+        ESP_LOGI(TAG, "mfc_write_block(): writing block failed");
+        return err;
+    }
+    if (pn532_packetbuffer[6] != 0x41 || pn532_packetbuffer[7] != 0x00 ) {
+        ESP_LOGI(TAG, "mfc_write_block(): writing block failed");
+        return ESP_FAIL;
+    }
+    return ESP_OK;
+}
+esp_err_t mfc_write_block4_light(pn532_io_handle_t io_handle, uint8_t tg_number, uint8_t block_number, const uint8_t *data) {
+    esp_err_t err;
+
+    if (io_handle == NULL || io_handle->driver_data == NULL || data == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    pn532_packetbuffer[0] = PN532_COMMAND_INDATAEXCHANGE;
+    pn532_packetbuffer[1] = tg_number;
+    pn532_packetbuffer[2] = MIFARE_ULTRALIGHT_CMD_WRITE;
+    pn532_packetbuffer[3] = block_number;
+    memcpy(&pn532_packetbuffer[4], data, 4);
+
+    err = pn532_sendrecv_command(io_handle, 8, 8, 1000, "mfc_write_block4_light", 1);//8 bytes sent, expect 8 bytes in reply
+    if (ESP_OK != err) {
+        ESP_LOGI(TAG, "mfc_write_block4_light(): writing block failed");
+        return err;
+    }
+    if (pn532_packetbuffer[6] != 0x41 || pn532_packetbuffer[7] != 0x00 ) {
+        ESP_LOGI(TAG, "mfc_write_block4_light(): writing block failed");
+        return ESP_FAIL;
+    }
+    return ESP_OK;
+}
+esp_err_t mfc_dump_sector_1K(pn532_io_handle_t io_handle, TagInfo *tag_info, uint8_t sector_number, uint8_t **dump_buffer,uint8_t key_type,uint8_t *inkey) {
+    esp_err_t err;
+    uint8_t block_number=sector_number * 4;
+    if (io_handle == NULL || io_handle->driver_data == NULL || tag_info == NULL || dump_buffer == NULL ) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    err = mfc_authenticate_block(io_handle, tag_info, block_number, key_type, inkey);
+    if (ESP_OK != err) {
+        ESP_LOGI(TAG, "mfc_dump_sector(): Authentication failed for the sector %d", sector_number);
+        return err;
+    }
+        
+    for (block_number = sector_number * 4; block_number < (sector_number * 4) + 4; block_number++) {
+        err = mfc_read_block(io_handle, tag_info->tg_number, block_number, dump_buffer[block_number % 4]);
+        if (ESP_OK != err) {
+            ESP_LOGI(TAG, "mfc_dump_sector(): Read failed for block %d", block_number);
+            return err;
+        }
+        ESP_LOGI(TAG, "mfc_dump_sector(): Data for block %d:", block_number);
+        ESP_LOG_BUFFER_HEXDUMP(TAG, dump_buffer[block_number % 4], 16, ESP_LOG_INFO);
+        ESP_LOGI(TAG,"index value is %d",block_number % 4);
+    }
     return ESP_OK;
 }
 
@@ -437,13 +590,14 @@ esp_err_t mifare_type_decode(TagInfo *Tag) {
             if (Tag->sak==0x08){
                 Tag->type=MIFARE_PLUS_SX_SL1;
                 Tag->getversionflag=1;break;}
-            if (Tag->sak==0x20){
+            if ( Tag->sak==0x20){
                 Tag->type=MIFARE_PLUS_SX_SL2_SL3;
                 Tag->getversionflag=1;break;}
         case 0x0344:
-            if ( Tag->sak == 0x20) {
+            if ( Tag->sak == 0x20){
                 Tag->type=MIFARE_DESFIRE;
-                Tag->getversionflag=1;break;}
+                Tag->getversionflag=1;break;
+}
         default:
             Tag->type=MIFARE_UNKNOWN;
             break;  
