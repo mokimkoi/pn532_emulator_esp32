@@ -455,6 +455,21 @@ esp_err_t mfc_dump_sector_1K(pn532_io_handle_t io_handle, TagInfo *tag_info, uin
     }
     return ESP_OK;
 }
+esp_err_t mfc_dump_1k_tag(pn532_io_handle_t io_handle, TagInfo *tag_info,uint8_t ***dump_buffer,uint8_t key_type,uint8_t *inkey) {
+    if (io_handle == NULL || io_handle->driver_data == NULL || tag_info == NULL || dump_buffer == NULL ) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    esp_err_t err;
+    for (int sector_number = 0; sector_number < 16 ; sector_number++){
+        err=mfc_dump_sector_1K(io_handle, tag_info, sector_number, dump_buffer[sector_number],key_type, inkey);
+        if (ESP_OK != err) {
+            ESP_LOGI(TAG, "mfc_dump_1k_tag dump():sector dump fail  %d",sector_number);
+            return err;
+        }
+    }
+    return ESP_OK;
+}
+    
 
 
 esp_err_t pn532_sendrecv_command(pn532_io_handle_t io_handle, uint8_t commandlen,uint8_t replylen,uint16_t timeout,char *function_name,uint8_t debug_flag) {
@@ -627,6 +642,21 @@ esp_err_t show_tag_info(TagInfo *Tag) {
     for (int i = 0; i < Tag->ATSLength-1; i++) {
         ESP_LOGI(TAG, " 0x%02X", Tag->ATS[i]);
     }
+    return ESP_OK;
+}
+esp_err_t show_tag_1k_data(uint8_t ***data ){
+    if (data == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    ESP_LOGI(TAG, "========== 1K Tag Data Dump ==========");
+    for (int sector = 0; sector < 16; sector++) {
+        ESP_LOGI(TAG, "--- Sector %d ---", sector);
+        for (int block = 0; block < 4; block++) {
+            ESP_LOGI(TAG, "Block %d:", sector * 4 + block);
+            ESP_LOG_BUFFER_HEXDUMP(TAG, data[sector][block], 16, ESP_LOG_INFO);
+        }
+    }
+    ESP_LOGI(TAG, "=====================================");
     return ESP_OK;
 }
 esp_err_t init_taginfo(TagInfo *Tag) {

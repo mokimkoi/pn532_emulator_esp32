@@ -179,26 +179,25 @@ void app_main()
         ESP_LOGI(TAG, "Displaying Tag 1 info:");
         show_tag_info(mainTag);
 
-        uint8_t **sector_data;
+        uint8_t ***tag_data;
         uint8_t key []={0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
         
-        sector_data = (uint8_t **)malloc(4 * sizeof(uint8_t *));
-        for (int i = 0; i < 4; i++) {
-            sector_data[i] = (uint8_t *)malloc(16 * sizeof(uint8_t));
+        tag_data =(uint8_t ***)malloc(16*sizeof(uint8_t**));
+        for (int j = 0; j < 16; j++) {
+            tag_data[j]=(uint8_t **)malloc(4*sizeof(uint8_t*));
+            for (int i = 0; i < 4; i++) {
+                tag_data[j][i] = (uint8_t *)malloc(16 * sizeof(uint8_t));
+            }
         }
-        uint8_t sector_number=0;
-
         
-        err = mfc_dump_sector_1K(&pn532_io, mainTag, sector_number,sector_data , MIFARE_CMD_AUTH_A, key);
+        err = mfc_dump_1k_tag(&pn532_io, mainTag,tag_data , MIFARE_CMD_AUTH_A, key);
         if (ESP_OK != err) {
-            ESP_LOGI(TAG, "Failed to dump sector 5");
+            ESP_LOGI(TAG, "Failed to dump tag 1K classic mifare ");
             return;
         }
-        ESP_LOGI(TAG, "Sector 5 data:");
-        ESP_LOGI(TAG, "after  Dumping sector 5 data:");
-        for (int i = 0; i < 4; i++) {
-            ESP_LOGI(TAG, " Block %d:", i + 24);
-            ESP_LOG_BUFFER_HEXDUMP(TAG, sector_data[i], 16, ESP_LOG_INFO);
+        err=show_tag_1k_data(tag_data);
+        if (err!=ESP_OK){
+            ESP_LOGI(TAG, "failed to show tag data ");
         }
     }
 
