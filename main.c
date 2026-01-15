@@ -10,6 +10,7 @@
 #include "pn532_driver_hsu.h"
 #include "pn532_driver_spi.h"
 #include "pn532_i2c.h"
+#include "mifare_tag.h"
 
 
 // select ONLY ONE interface for the PN532
@@ -75,7 +76,6 @@ void app_main()
     ESP_LOGI(TAG, "get firmware version");
     uint32_t version_data = 0;
     uint8_t status = 0;
-
     
     do {
         err = pn532_get_firmware_version(&pn532_io, &version_data);
@@ -131,26 +131,26 @@ void app_main()
     //     vTaskDelay(1000 / portTICK_PERIOD_MS);
         
     // }while (1);
-    do
-    {
-        err = pn532_inlistpassivetargetscan(&pn532_io, TYPEA_106K, 2, PN532_BRTY_ISO14443A_106KBPS, mainTag, secondaryTag);
-        if (ESP_OK != err) {
-            ESP_LOGI(TAG, "no card detected");
-            pn532_reset(&pn532_io);
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-        } 
-        ESP_LOGI(TAG, "Tags detected:");
-        if (mainTag->tg_number >= 1 && mainTag != NULL) {
-        ESP_LOGI(TAG, "Displaying Tag 1 info:");
-        show_tag_info(mainTag);
-        }
-        if (secondaryTag->tg_number >= 1 && secondaryTag != NULL) {
-        ESP_LOGI(TAG, "Displaying Tag 2 info:");
-        show_tag_info(secondaryTag);
-        }
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    // do
+    // {
+    //     err = pn532_inlistpassivetargetscan(&pn532_io, TYPEA_106K, 2, PN532_BRTY_ISO14443A_106KBPS, mainTag, secondaryTag);
+    //     if (ESP_OK != err) {
+    //         ESP_LOGI(TAG, "no card detected");
+    //         pn532_reset(&pn532_io);
+    //         vTaskDelay(1000 / portTICK_PERIOD_MS);
+    //     } 
+    //     ESP_LOGI(TAG, "Tags detected:");
+    //     if (mainTag->tg_number >= 1 && mainTag != NULL) {
+    //     ESP_LOGI(TAG, "Displaying Tag 1 info:");
+    //     show_tag_info(mainTag);
+    //     }
+    //     if (secondaryTag->tg_number >= 1 && secondaryTag != NULL) {
+    //     ESP_LOGI(TAG, "Displaying Tag 2 info:");
+    //     show_tag_info(secondaryTag);
+    //     }
+    //     vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-    }while (mainTag->tg_number == 0 );
+    // }while (mainTag->tg_number == 0 );
     // if (mainTag->tg_number >= 1 && mainTag != NULL && mainTag->uidLength > 0) {
     //     ESP_LOGI(TAG, "Displaying Tag 1 info:");
     //     show_tag_info(mainTag);
@@ -180,7 +180,9 @@ void app_main()
         show_tag_info(mainTag);
 
         uint8_t ***tag_data;
-        uint8_t key []={0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+        mifare_classic_1k_t tag1k ={0} ;
+        //uint8_t key []={0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+        uint8_t key []={0x4A,0x63 ,0x52,0x68 ,0x46 ,0x77};
         
         tag_data =(uint8_t ***)malloc(16*sizeof(uint8_t**));
         for (int j = 0; j < 16; j++) {
@@ -189,85 +191,85 @@ void app_main()
                 tag_data[j][i] = (uint8_t *)malloc(16 * sizeof(uint8_t));
             }
         }
+        uint8_t nb_poll=0x03;
+        uint8_t nb_types=1;
+        uint8_t period=0x06;
+        uint8_t type[]={0x10};
+        err=pn532_inautopoll(&pn532_io,nb_poll,period,nb_types,type);
+        if (ESP_OK != err){
+            ESP_LOGI(TAG, "polling failed **-*-*-*-* ");
+        }
         
-        err = mfc_dump_1k_tag(&pn532_io, mainTag,tag_data , MIFARE_CMD_AUTH_A, key);
-        if (ESP_OK != err) {
-            ESP_LOGI(TAG, "Failed to dump tag 1K classic mifare ");
-            return;
-        }
-        err=show_tag_1k_data(tag_data);
-        if (err!=ESP_OK){
-            ESP_LOGI(TAG, "failed to show tag data ");
-        }
+        
+        // err = mfc_dump_1k_tag(&pn532_io, mainTag,tag_data , MIFARE_CMD_AUTH_A, key);
+        // if (ESP_OK != err) {
+        //     ESP_LOGI(TAG, "Failed to dump tag 1K classic mifare ");
+        //     return;
+        // }
+        // err=show_tag_1k_data(tag_data);
+        // if (err!=ESP_OK){
+        //     ESP_LOGI(TAG, "failed to show tag data ");
+        // }
+        
+        // if (ESP_OK != pn532_indeselect(&pn532_io,mainTag->tg_number)){
+        //     ESP_LOGI(TAG, "deselecting failed  ************  ");
+        // }
+        // if (ESP_OK != pn532_inselect(&pn532_io,mainTag->tg_number)){
+        //     ESP_LOGI(TAG, "selecting failed  ************  ");
+        // }
+        // do{
+        //     err=mfc_authenticate_block(&pn532_io,mainTag,25,MIFARE_CMD_AUTH_A,NULL);
+        //     if (ESP_OK != err) {
+        //         ESP_LOGI(TAG, "Failed to auth with keyA -------------------------------------  ");
+        //     vTaskDelay(5000 / portTICK_PERIOD_MS);
+        //     }
+
+            
+        // }while (ESP_OK != err);    
+
+        // err=mfc_authenticate_block(&pn532_io,mainTag,25,MIFARE_CMD_AUTH_B,NULL);
+        // if (ESP_OK != err) {
+        //     ESP_LOGI(TAG, "Failed to auth with keyB  ");
+        // }
+        // uint8_t **data;
+        // data =(uint8_t **)malloc(4 * sizeof(uint8_t *));
+        // for (int i = 0; i < 4; i++) {
+        //     data[i] = (uint8_t *)malloc(16 * sizeof(uint8_t));
+        // }
+
+        // uint8_t key1 []={0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+        // err=mfc_dump_sector_1K(&pn532_io, mainTag,14,data , MIFARE_CMD_AUTH_A, NULL);
+        // if (err!=ESP_OK){
+        //     ESP_LOGI(TAG, "failed to sector data ");
+        // }
+
+        // err=parse_pdata_to_tag(tag_data,&tag1k);
+        // if (err!=ESP_OK){
+        //     ESP_LOGI(TAG, "failed to parse tag data ");
+        // }
+        // err=show_tag_1k_data_struct(&tag1k);
     }
+    uint8_t nb_poll=0x03;
+    uint8_t nb_types=1;
+    uint8_t period=0x06;
+    uint8_t type[]={0x00};
+    ESP_LOGI(TAG,"HELLLLLLLO");
+    do{
+    err=pn532_inautopoll(&pn532_io,nb_poll,period,nb_types,type);
+    if (ESP_OK != err){
+        ESP_LOGI(TAG, "polling failed **-*-*-*-* ");
+    }
+    }while(err!=ESP_OK)  ; 
+    // err=pn532_inautopoll(&pn532_io,nb_poll,period,nb_types,type);
+    // if (ESP_OK != err){
+    //     ESP_LOGI(TAG, "polling failed **-*-*-*-* ");
+    // }
 
 
-    
     ESP_LOGI(TAG, "Found chip PN5%x", (unsigned int)(version_data >> 24) & 0xFF);
     ESP_LOGI(TAG, "Firmware ver. %d.%d", (int)(version_data >> 16) & 0xFF, (int)(version_data >> 8) & 0xFF);
 
     ESP_LOGI(TAG, "Waiting for an ISO14443A Card ...");
-    while (0)
-    {
-        uint8_t uid[] = {0, 0, 0, 0, 0, 0, 0}; // Buffer to store the returned UID
-        uint8_t uid_length=0;                     // Length of the UID (4 or 7 bytes depending on ISO14443A card type)
-
-        // Wait for an ISO14443A type cards (Mifare, etc.).  When one is found
-        // 'uid' will be populated with the UID, and uid_length will indicate
-        // if the uid is 4 bytes (Mifare Classic) or 7 bytes (Mifare Ultralight)
         
-        
-            // Display some basic information about the card
-            ESP_LOGI(TAG, "\nFound an ISO14443A card");
-            ESP_LOGI(TAG, "UID Length: %d bytes", uid_length);
-            ESP_LOGI(TAG, "UID Value:");
-            ESP_LOG_BUFFER_HEX_LEVEL(TAG, uid, uid_length, ESP_LOG_INFO);
-
-            err = pn532_in_list_passive_target(&pn532_io);
-            if (err != ESP_OK) {
-                ESP_LOGI(TAG, "Failed to inList passive target");
-                continue;
-            }
-
-            // NTAG2XX_MODEL ntag_model = NTAG2XX_UNKNOWN;
-            // err = ntag2xx_get_model(&pn532_io, &ntag_model);
-            // if (err != ESP_OK)
-            //     continue;
-
-            // int page_max;
-            // switch (ntag_model) {
-            //     case NTAG2XX_NTAG213:
-            //         page_max = 45;
-            //         ESP_LOGI(TAG, "found NTAG213 target (or maybe NTAG203)");
-            //         break;
-
-            //     case NTAG2XX_NTAG215:
-            //         page_max = 135;
-            //         ESP_LOGI(TAG, "found NTAG215 target");
-            //         break;
-
-            //     case NTAG2XX_NTAG216:
-            //         page_max = 231;
-            //         ESP_LOGI(TAG, "found NTAG216 target");
-            //         break;
-
-            //     default:
-            //         ESP_LOGI(TAG, "Found unknown NTAG target!");
-            //         continue;
-            // }
-
-            // for(int page=0; page < page_max; page+=4) {
-            //     uint8_t buf[16];
-            //     err = ntag2xx_read_page(&pn532_io, page, buf, 16);
-            //     if (err == ESP_OK) {
-            //         ESP_LOG_BUFFER_HEXDUMP(TAG, buf, 16, ESP_LOG_INFO);
-            //     }
-            //     else {
-            //         ESP_LOGI(TAG, "Failed to read page %d", page);
-            //         break;
-            //     }
-            // }
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-        
-    }
+    
 }

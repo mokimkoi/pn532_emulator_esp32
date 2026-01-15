@@ -6,8 +6,8 @@
  * This component is inspired the Adafruit library.
  */
 
-#ifndef PN532_H
-#define PN532_H
+#ifndef PN532_I2C_H
+#define PN532_I2C_H
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +17,7 @@
 #include "freertos/event_groups.h"
 #include "driver/gpio.h"
 #include "pn532_driver.h"
+#include "mifare_tag.h"
 
 
 #ifdef __cplusplus
@@ -395,11 +396,19 @@ esp_err_t mifare_type_decode(TagInfo *Tag) ;
 */
 esp_err_t pn532_sendrecv_command(pn532_io_handle_t io_handle, uint8_t commandlen,uint8_t replylen,uint16_t timeout,char *function_name,uint8_t debug_flag);
 esp_err_t pn532_indataexchange(pn532_io_handle_t io_handle,const uint8_t *send_buffer,uint8_t send_buffer_length,uint8_t *response,uint8_t *response_length) ;
+esp_err_t pn532_inselect(pn532_io_handle_t io_handle,uint8_t Tgnumber);
+esp_err_t pn532_indeselect(pn532_io_handle_t io_handle,uint8_t Tgnumber);
+esp_err_t pn532_inreselect(pn532_io_handle_t io_handle,uint8_t Tgnumber);
+esp_err_t pn532_inautopoll(pn532_io_handle_t io_handle,uint8_t pollNb,uint8_t period,uint8_t TypeNb,uint8_t *types);
 
 esp_err_t show_tag_info(TagInfo *Tag) ;
 esp_err_t show_tag_1k_data(uint8_t ***data );
+esp_err_t show_tag_1k_data_struct(mifare_classic_1k_t *tag);
 esp_err_t typeA_response_parse(TagInfo *tag_info1,TagInfo *tag_info2) ;   
 esp_err_t init_taginfo(TagInfo *Tag) ;
+esp_err_t parse_pdata_to_tag(uint8_t ***data,mifare_classic_1k_t* tag);
+
+
 
 esp_err_t mfc_authenticate_block(pn532_io_handle_t io_handle,TagInfo *tag_info,uint8_t block_number, uint8_t key_type, const uint8_t *inkey) ;
 esp_err_t mfc_read_block(pn532_io_handle_t io_handle, uint8_t tg_number, uint8_t block_number, uint8_t *data) ;

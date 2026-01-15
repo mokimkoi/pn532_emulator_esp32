@@ -12,6 +12,7 @@
 
 #include <pn532_i2c.h>
 
+
 #define CONFIG_MIFAREDEBUG 0
 #define CONFIG_PN532DEBUG 0
 
@@ -326,9 +327,82 @@ esp_err_t pn532_indataexchange(pn532_io_handle_t io_handle,const uint8_t *send_b
     memcpy(response, &pn532_packetbuffer[8], *response_length);
     return ESP_OK;
 }
+esp_err_t pn532_inselect(pn532_io_handle_t io_handle,uint8_t Tgnumber){
+    
+    if (io_handle == NULL || io_handle->driver_data == NULL ) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    pn532_packetbuffer[0] = PN532_COMMAND_INSELECT;
+    pn532_packetbuffer[1] = Tgnumber;
+    esp_err_t err = pn532_sendrecv_command(io_handle, 2, 8, 1000, "pn532_inselect", 0);
+   
+    if (pn532_packetbuffer[6] != 0x55 || pn532_packetbuffer[7] != 0x00 || err != ESP_OK) {
+        ESP_LOGI(TAG, "pn532_insel(): selecting failed");
+        return ESP_FAIL;
+    }
+    return ESP_OK;
+
+}
+esp_err_t pn532_indeselect(pn532_io_handle_t io_handle,uint8_t Tgnumber){
+    
+    if (io_handle == NULL || io_handle->driver_data == NULL ) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    pn532_packetbuffer[0] = PN532_COMMAND_INDESELECT;
+    pn532_packetbuffer[1] = Tgnumber;
+    esp_err_t err = pn532_sendrecv_command(io_handle, 2, 8, 1000, "pn532_indeselect", 0);
+   
+    if (pn532_packetbuffer[6] != 0x45 || pn532_packetbuffer[7] != 0x00 || err != ESP_OK) {
+        ESP_LOGI(TAG, "pn532_insel(): deselecting failed");
+        return ESP_FAIL;
+    }
+    return ESP_OK;
+
+}
+esp_err_t pn532_inreselect(pn532_io_handle_t io_handle,uint8_t Tgnumber){
+    if ( ESP_OK != pn532_indeselect(io_handle,Tgnumber)){
+        ESP_LOGI(TAG, "inreselect():  deselect failed ");
+        return ESP_FAIL;
+    }
+    if ( ESP_OK != pn532_inselect(io_handle,Tgnumber)){
+        ESP_LOGI(TAG, "inreselect():  select failed ");
+        return ESP_FAIL;
+    }
+    return ESP_OK;
+}
+esp_err_t pn532_inautopoll(pn532_io_handle_t io_handle,uint8_t pollNb,uint8_t period,uint8_t TypeNb,uint8_t *types){
+    if ( io_handle== NULL || pollNb == 0 || period == 0 || types == NULL){
+        return ESP_ERR_INVALID_ARG ;
+    }
+    pn532_packetbuffer[0]=PN532_COMMAND_INAUTOPOLL;
+    pn532_packetbuffer[1]=pollNb;
+    pn532_packetbuffer[2]=period;
+    for (int i=0;i<TypeNb;i++){
+        pn532_packetbuffer[i+3]=types[i];
+    }
+    
+    
+    esp_err_t err=pn532_sendrecv_command(io_handle, 3+TypeNb, 32, 0, "pn532inAutopoll",1);
+    
+    if (pn532_packetbuffer[6] != 0x61 || pn532_packetbuffer[7] == 0x00 || err != ESP_OK) {
+        ESP_LOGI(TAG, "pn532_inAutopoll():failed to autopoll ");
+        return ESP_FAIL;
+    }else {
+       ESP_LOGI(TAG, "pn532_inAutopoll():success to autopoll tag founds ");
+
+    }
+    return ESP_OK;
+}
+
+
 esp_err_t mfc_authenticate_block(pn532_io_handle_t io_handle,TagInfo *tag_info,uint8_t block_number, uint8_t key_type, const uint8_t *inkey) {
     esp_err_t err;
     uint8_t key [6];
+
+    if (ESP_OK != pn532_inreselect(io_handle,tag_info->tg_number)){
+        return ESP_FAIL;
+    }
+
     if (io_handle == NULL || io_handle->driver_data == NULL || tag_info == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -350,10 +424,20 @@ esp_err_t mfc_authenticate_block(pn532_io_handle_t io_handle,TagInfo *tag_info,u
     pn532_packetbuffer[3] = block_number;
     memcpy(&pn532_packetbuffer[4], key, 6);
     memcpy(&pn532_packetbuffer[10], tag_info->uid, tag_info->uidLength);
-    err = pn532_sendrecv_command(io_handle, 10 + tag_info->uidLength, 8, 1000, "mfc_authenticate_block", 1);
+    uint8_t packet_len = 10 + tag_info->uidLength;
+    if (packet_len > PN532_COMMAND_BUFFER_LEN) {
+        packet_len = PN532_COMMAND_BUFFER_LEN;
+    }
+    // ESP_LOGI(TAG, "mfc_authenticate_block(): packet to send (%d bytes):", packet_len);
+    // ESP_LOG_BUFFER_HEXDUMP(TAG, pn532_packetbuffer, packet_len, ESP_LOG_INFO);
+    // for (int i = 0; i < packet_len; i++) {
+    //     ESP_LOGI(TAG, "mfc_authenticate_block(): Byte %02d: 0x%02X", i, pn532_packetbuffer[i]);
+    // }
+    
+    err = pn532_sendrecv_command(io_handle, 10 + tag_info->uidLength, 8, 1500, "mfc_authenticate_block", 0);
    
     if (pn532_packetbuffer[6] != 0x41 || pn532_packetbuffer[7] != 0x00 || err != ESP_OK) {
-        ESP_LOGI(TAG, "mfc_authenticate_block(): authentication failed");
+        ESP_LOGI(TAG, "mfc_authenticate_block(): authentication failed wrong frame");
         return ESP_FAIL;
     }
     return ESP_OK;
@@ -437,21 +521,33 @@ esp_err_t mfc_dump_sector_1K(pn532_io_handle_t io_handle, TagInfo *tag_info, uin
     if (io_handle == NULL || io_handle->driver_data == NULL || tag_info == NULL || dump_buffer == NULL ) {
         return ESP_ERR_INVALID_ARG;
     }
+    // if (ESP_OK != pn532_inreselect(io_handle,tag_info->tg_number)){
+    //     return ESP_FAIL;
+    // }
+    
     err = mfc_authenticate_block(io_handle, tag_info, block_number, key_type, inkey);
     if (ESP_OK != err) {
         ESP_LOGI(TAG, "mfc_dump_sector(): Authentication failed for the sector %d", sector_number);
-        return err;
-    }
+        // if (ESP_OK != pn532_inreselect(io_handle,tag_info->tg_number)){
+        // return ESP_FAIL;
+    // }
+        err = mfc_authenticate_block(io_handle, tag_info, block_number, key_type, NULL);
+        if (ESP_OK != err){
+            ESP_LOGI(TAG, "mfc_dump_sector(): Authentication failed for the sector with factory key too  %d", sector_number);
+            return err;
+        }
+        ESP_LOGI(TAG, "mfc_dump_sector(): but succeess with factory key for the sector %d", sector_number);
         
+    }
     for (block_number = sector_number * 4; block_number < (sector_number * 4) + 4; block_number++) {
         err = mfc_read_block(io_handle, tag_info->tg_number, block_number, dump_buffer[block_number % 4]);
         if (ESP_OK != err) {
             ESP_LOGI(TAG, "mfc_dump_sector(): Read failed for block %d", block_number);
             return err;
         }
-        ESP_LOGI(TAG, "mfc_dump_sector(): Data for block %d:", block_number);
-        ESP_LOG_BUFFER_HEXDUMP(TAG, dump_buffer[block_number % 4], 16, ESP_LOG_INFO);
-        ESP_LOGI(TAG,"index value is %d",block_number % 4);
+        // ESP_LOGI(TAG, "mfc_dump_sector(): Data for block %d:", block_number);
+        // ESP_LOG_BUFFER_HEXDUMP(TAG, dump_buffer[block_number % 4], 16, ESP_LOG_INFO);
+        // ESP_LOGI(TAG,"index value is %d",block_number % 4);
     }
     return ESP_OK;
 }
@@ -460,11 +556,14 @@ esp_err_t mfc_dump_1k_tag(pn532_io_handle_t io_handle, TagInfo *tag_info,uint8_t
         return ESP_ERR_INVALID_ARG;
     }
     esp_err_t err;
+    uint8_t error_data[]={0xF0,0xF0,0xF0,0xF0,0xF0,0xF0,0xF0,0xF0,0xF0,0xF0,0xF0,0xF0,0xF0,0xF0,0xF0,0xF0};
     for (int sector_number = 0; sector_number < 16 ; sector_number++){
         err=mfc_dump_sector_1K(io_handle, tag_info, sector_number, dump_buffer[sector_number],key_type, inkey);
         if (ESP_OK != err) {
             ESP_LOGI(TAG, "mfc_dump_1k_tag dump():sector dump fail  %d",sector_number);
-            return err;
+            for (int i=0 ; i<4;i++){
+                memcpy(dump_buffer[sector_number][i],error_data,16);
+            }
         }
     }
     return ESP_OK;
@@ -484,6 +583,7 @@ esp_err_t pn532_sendrecv_command(pn532_io_handle_t io_handle, uint8_t commandlen
     if (commandlen <=0 || replylen <=0 ) {
         return ESP_ERR_INVALID_ARG;
     }
+    if (debug_flag){ESP_LOG_BUFFER_HEXDUMP(function_name,pn532_packetbuffer,commandlen,ESP_LOG_INFO);}
     err=pn532_send_command_wait_ack(io_handle, pn532_packetbuffer, commandlen, PN532_WRITE_TIMEOUT);
     if (ESP_OK != err) {
         ESP_LOGI(function_name, ": send scan command failed");
@@ -502,7 +602,7 @@ esp_err_t pn532_sendrecv_command(pn532_io_handle_t io_handle, uint8_t commandlen
     }
     if (ESP_OK != err) return err;
     if (debug_flag){
-        ESP_LOGI(function_name, ": start byts -----");
+        ESP_LOGI(function_name, ":receive start byts -----");
         for (int i =  3; i < pn532_packetbuffer[3]+5; i++) {
         ESP_LOGI(function_name, ": Byte %02d: 0x%02X", i, pn532_packetbuffer[i]);
         }
@@ -659,6 +759,22 @@ esp_err_t show_tag_1k_data(uint8_t ***data ){
     ESP_LOGI(TAG, "=====================================");
     return ESP_OK;
 }
+esp_err_t show_tag_1k_data_struct(mifare_classic_1k_t *tag){
+    ESP_LOGI(TAG, "========== 1K Tag Data Dump (struct) ==========");
+    for (int sector = 0; sector < 16; sector++) {
+        ESP_LOGI(TAG, "--- Sector %d ---", sector);
+        ESP_LOGI(TAG, "Block %d:", sector * 4 + 0);
+        ESP_LOG_BUFFER_HEXDUMP(TAG, &tag->sectors[sector].block0, 16, ESP_LOG_INFO);
+        ESP_LOGI(TAG, "Block %d:", sector * 4 + 1);
+        ESP_LOG_BUFFER_HEXDUMP(TAG, &tag->sectors[sector].block0, 16, ESP_LOG_INFO);
+        ESP_LOGI(TAG, "Block %d:", sector * 4 + 2);
+        ESP_LOG_BUFFER_HEXDUMP(TAG, &tag->sectors[sector].block0, 16, ESP_LOG_INFO);
+        ESP_LOGI(TAG, "Trailer (block %d):", sector * 4 + 3);
+        ESP_LOG_BUFFER_HEXDUMP(TAG, &tag->sectors[sector].trailer, 16, ESP_LOG_INFO);
+    }
+    ESP_LOGI(TAG, "=====================================");
+    return ESP_OK;
+}
 esp_err_t init_taginfo(TagInfo *Tag) {
     if (Tag == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -683,8 +799,19 @@ esp_err_t error_frame_check() {
     }
     return ESP_OK;
 }
+esp_err_t parse_pdata_to_tag(uint8_t ***data,mifare_classic_1k_t* tag){
+    if (data ==NULL || tag ==NULL){
+        return ESP_ERR_INVALID_ARG;
+    }
+    for (int i =0 ;i<16 ;i++){
+        memcpy(&tag->sectors[i].block0,data[i][0],16);
+        memcpy(&tag->sectors[i].block1,data[i][1],16);
+        memcpy(&tag->sectors[i].block2,data[i][2],16);
+        memcpy(&tag->sectors[i].trailer,data[i][3],16);
+    }
+    return ESP_OK;
 
-
+}
 
 
 
